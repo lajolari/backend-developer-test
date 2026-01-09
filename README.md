@@ -56,6 +56,6 @@ docker-compose exec app php artisan test
 
 ### 👨‍💻 Author
 **Leonardo Lama**  
-Fullstack Developer — PHP / Laravel / AWS
-📧 leolama18@gmail.com
+Fullstack Developer — PHP / Laravel / AWS  
+📧 leolama18@gmail.com  
 🌐 https://www.linkedin.com/in/ing-leonardo-lama/
