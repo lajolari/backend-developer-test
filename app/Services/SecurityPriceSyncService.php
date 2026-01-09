@@ -3,50 +3,57 @@
 namespace App\Services;
 
 use App\Models\Security;
-use App\Models\SecurityType;
 use App\Models\SecurityPrice;
+use App\Models\SecurityType;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
-/**
- * Service that handles syncing security prices from an external API (mocked)
- */
 class SecurityPriceSyncService
 {
-    /**
-     * Sync prices for a given security type
-     */
-    public function syncByType(string $slug): void
+    public function __construct(
+        protected MarketDataProviderFactory $factory
+    ) {}
+
+    public function syncAll(): void
     {
-        $type = SecurityType::where('slug', $slug)->firstOrFail();
-        $existingSymbols = $type->securities()->pluck('symbol')->toArray();
+        // 1. Obtenemos todos los tipos (Crypto, Forex, Stocks)
+        $types = SecurityType::with('securities')->get();
 
-        // Mock external API response
-        $response = $this->mockApiResponse($slug);
+        foreach ($types as $type) {
+            try {
+                // 2. La Factory nos da el adaptador correcto (Estrategia)
+                $adapter = $this->factory->make($type->slug);
 
-        foreach ($response['results'] as $item) {
-            if (in_array($item['symbol'], $existingSymbols)) {
-                $security = Security::where('symbol', $item['symbol'])->first();
+                $securities = $type->securities;
+                if ($securities->isEmpty()) continue;
 
-                SecurityPrice::updateOrCreate(
-                    ['security_id' => $security->id],
-                    [
-                        'last_price' => $item['price'],
-                        'as_of_date' => $item['last_price_datetime']
-                    ]
-                );
+                $symbols = $securities->pluck('symbol')->toArray();
+
+                // 3. Obtenemos datos normalizados (DTOs)
+                $pricesDto = $adapter->fetchPrices($symbols);
+
+                // 4. Guardamos masivamente (Batch Insert)
+                DB::transaction(function () use ($pricesDto, $securities) {
+                    foreach ($pricesDto as $dto) {
+                        $security = $securities->firstWhere('symbol', $dto->symbol);
+                        
+                        if ($security) {
+                            SecurityPrice::create([
+                                'security_id' => $security->id,
+                                'last_price'  => $dto->price,
+                                'currency'    => $dto->currency,
+                                'as_of_date'  => $dto->timestamp,
+                            ]);
+                        }
+                    }
+                });
+
+                Log::info("Synced {$pricesDto->count()} prices for {$type->slug}");
+
+            } catch (\Exception $e) {
+                // Si falla un tipo (ej: API caída), logueamos y seguimos con el siguiente
+                Log::error("Sync failed for {$type->slug}: " . $e->getMessage());
             }
         }
-    }
-
-    /**
-     * Simulate an external API response
-     */
-    protected function mockApiResponse(string $type): array
-    {
-        return [
-            'results' => [
-                ['symbol' => 'APPL', 'price' => 188.97, 'last_price_datetime' => now()],
-                ['symbol' => 'TSLA', 'price' => 244.42, 'last_price_datetime' => now()],
-            ]
-        ];
     }
 }

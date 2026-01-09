@@ -2,30 +2,21 @@
 
 namespace App\Jobs;
 
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Queue\Queueable;
 use App\Services\SecurityPriceSyncService;
-use App\Models\SecurityType;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
 class SyncAllSecuritiesJob implements ShouldQueue
 {
-    use Queueable;
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct()
-    {
-        //
-    }
+    public $timeout = 120; // 2 minutos máximo
 
-    /**
-     * Execute the job.
-     */
-    public function handle(SecurityPriceSyncService $syncService): void
+    public function handle(SecurityPriceSyncService $service): void
     {
-        foreach (SecurityType::all() as $type) {
-            $syncService->syncByType($type->slug);
-        }
+        $service->syncAll();
     }
 }
